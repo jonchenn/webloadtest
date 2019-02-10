@@ -24,10 +24,6 @@ actions:
 */
 let taskConfig = {
   browser: 'chrome',
-  searchKeyword: 'amp-list',
-  expectedAmpViewerTitle: 'ampbyexample.com',
-  targetSelector: 'a.amp_r',
-  screenshot: true,
   width: 500,
   height: 1000,
   sleepAfterEachStep: 1000,
@@ -69,7 +65,6 @@ let taskConfig = {
   }, {
     action: 'Screenshot',
     log: 'Screenshot.',
-    outputFolder: 'output',
     suffix: 'End',
   }],
 };
@@ -180,7 +175,7 @@ async function runTask(config, context) {
         case 'Screenshot':
           let image = await driver.takeScreenshot();
           require('fs').writeFileSync(
-            `${step.outputFolder}/screenshot-RUN_${context.run}-${step.suffix}.png`,
+            `${context.outputFolder}/screenshot-RUN_${context.run}-${step.suffix}.png`,
             image, 'base64');
           break;
         default:
@@ -207,10 +202,10 @@ async function runTask(config, context) {
 async function main() {
   let succces = 0;
   let runs = argv['runs'] || 3;
-  let report = argv['report'];
+  let outputFolder = argv['output'] || 'output';
   let results = [];
 
-  if (!runs) {
+  if (!runs || !outputFolder) {
     printUsage();
     return;
   }
@@ -221,6 +216,7 @@ async function main() {
       console.log(`------ Run ${i} ------`);
       await runTask(taskConfig, {
         run: i,
+        outputFolder: outputFolder,
       });
       succces++;
       results.push('success');
