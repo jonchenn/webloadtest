@@ -21,7 +21,7 @@ function getPageObject(page, action) {
 }
 
 async function runTask(config, context) {
-  let isSuccess = false;
+  let isSuccess = false, error = null;
   let browser, page, content;
   let fullOutputPath = context.fullOutputPath;
   let device = config.device || 'Pixel 2'
@@ -42,7 +42,7 @@ async function runTask(config, context) {
     });
     page = await browser.newPage();
     await page.emulate(devices[device]);
-    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+    page.on('console', msg => console.log(`\tPAGE console.log: ${msg.text()}`.gray));
 
     for (var i = 0; i < config.steps.length; i++) {
       let step = config.steps[i];
@@ -147,7 +147,6 @@ async function runTask(config, context) {
             await page.content());
       }
     }
-    isSuccess = true;
 
   } catch (err) {
     console.error(`${err}`.red);
@@ -155,11 +154,12 @@ async function runTask(config, context) {
     await outputHtmlToFile(
         `${fullOutputPath}/html-step-${i+1}.html`,
         await page.content());
+    error = err;
 
   } finally {
     await browser.close();
     console.log('Complete.'.green);
-    return isSuccess;
+    return error;
   }
 }
 
@@ -182,7 +182,7 @@ async function generateLoads(config, argv) {
   let succces = 0;
   let runs = argv['runs'] || 1;
   let outputPath = argv['output'] || Date.now;
-  let results = [];
+  let successes = [], results = [];
   let context = {
     verbose: argv.hasOwnProperty('verbose'),
     isHeadless: argv['headless'] ? argv['headless'] === 'true' : true,
@@ -203,23 +203,32 @@ async function generateLoads(config, argv) {
     await fse.outputFile(filePath, '');
 
     console.log(`------ Run ${i} ------`.cyan);
-    let isSuccess = await runTask(config, context);
+    let error = await runTask(config, context);
 
-    if (isSuccess) {
+    if (!error) {
       succces++;
-      results.push('success'.green);
+      results.push('Success');
+      successes.push(true);
     } else {
-      results.push('failed'.red);
+      results.push(`Error: ${error}`);
+      successes.push(false);
     }
   }
+
+  let successRate = Math.round(succces / runs * 100);
+  let reportText = `succces: ${succces}/${runs} (${successRate}%)\r\n`;
   console.log('===========');
-  console.log(`succces: ${succces}/${runs}`);
+  console.log(reportText.cyan);
 
   for (let i = 0; i < runs; i++) {
-    console.log(`${i+1}: ${results[i]}`);
+    console.log(`${i+1}. ` + (successes[i] ? `${results[i]}`.green : `${results[i]}`.red));
+    reportText += `${i+1}. ${results[i]}\r\n`;
   }
-}
 
+  // Output report to file.
+  let filePath = path.resolve(`output/${outputPath}/report.txt`);
+  await fse.outputFile(filePath, reportText);
+}
 
 module.exports = {
   generateLoads: generateLoads,
