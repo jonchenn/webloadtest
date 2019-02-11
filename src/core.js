@@ -9,73 +9,31 @@ const assert = require('assert');
 const { JSDOM } = require("jsdom");
 
 
-let sampleConfig = {
-  browser: 'chrome',
-  device: 'Pixel 2',
-  windowWidth: 600,
-  windowHeight: 900,
-  sleepAfterEachStep: 1000,
-  sleepAfterEachAction: 500,
-  steps: [{
-    name: 'Search amp-list on Google Search',
-    outputHtmlToFile: true,
-    actions: [{
-      log: 'Search',
-      actionType: 'url',
-      url: 'https://www.google.com/ncr',
-      sleepAfter: 1000,
-    }, {
-      actionType: 'typeThenSubmit',
-      log: 'Input search keyword',
-      selector: 'input[name="q"]',
-      inputText: 'amp-list',
-      sleepAfter: 1000,
-    }, {
-      actionType: 'verifyTitle',
-      log: 'Verify page title',
-      textEqualsTo: 'amp-list - Google Search',
-    }]
-  }, {
-    name: 'Click first AMP result in the SERP',
-    outputHtmlToFile: true,
-    actions: [{
-      actionType: 'click',
-      log: 'Click first AMP result',
-      selector: 'a.amp_r',
-    }, {
-      actionType: 'verifyText',
-      log: 'Verify AMP viewer title',
-      selector: '.amp-ttlctr',
-      textEqualsTo: 'ampbyexample.com',
-    }, {
-      actionType: 'click',
-      log: 'Click Open In Playground button',
-      selector: 'a.ampstart-btn',
-    }, {
-      actionType: 'verifyText',
-      log: 'Verify document title',
-      selector: '#document-title',
-      textEqualsTo: 'amp-list',
-    }, {
-      actionType: 'screenshot',
-      log: 'Take screenshot',
-      suffix: 'End',
-    }],
-  }],
-};
-
+function getPageObject(page, action) {
+  if (typeof action.iframe === 'number') {
+    console.log(`    On iframe #${action.iframe}`.yellow);
+    return page.frames()[action.iframe];
+  } else if (typeof action.iframe === 'string') {
+    console.log(`    On iframe id = ${action.iframe}`.yellow);
+    return page.frames().find(frame => frame.name() === action.iframe);
+  }
+  return page;
+}
 
 async function runTask(config, context) {
   let isSuccess = false;
-  let browser, page;
+  let browser, page, content;
   let fullOutputPath = context.fullOutputPath;
   let device = config.device || 'Pixel 2'
+  let waitOptions = {
+    waitUntil: ['load', 'networkidle0'],
+  };
 
   try {
     assert(config.browser);
     assert(config.steps);
 
-    console.log(`Use device ${device}`.yellow);
+    console.log(`Use device ${device}`.cyan);
 
     // Init puppeteer.
     browser = await puppeteer.launch({
@@ -91,71 +49,72 @@ async function runTask(config, context) {
       let isFailed = false;
 
       if (!step.actions || step.skip) continue;
-      console.log(`Step ${i+1}: ${step.name}`.yellow);
+      console.log(`Step ${i+1}: ${step.name}`.cyan);
 
       for (let [index, action] of Object.entries(step.actions)) {
         let message = action.actionType;
-        console.log(`    action: ${action.actionType}`.blue);
+        let pageObj = getPageObject(page, action);
+
+        console.log(`    action: ${action.actionType}`.yellow);
 
         switch (action.actionType) {
           case 'url':
-            await page.goto(action.url);
+            await pageObj.goto(action.url);
             message = 'Opened URL ' + action.url;
             break;
 
           case 'waitInSeconds':
-            await page.waitFor(parseInt(action.value));
+            await pageObj.waitFor(parseInt(action.value));
             message = `Waited for ${action.value} seconds`;
             break;
 
           case 'waitFor':
-            await page.waitFor(action.selector);
+            await pageObj.waitFor(action.selector);
             message = `Waited for element ${action.selector}`;
             break;
 
           case 'typeThenSubmit':
-            await page.waitFor(action.selector);
-            await page.type(action.selector, action.inputText);
-            await page.keyboard.press('Enter');
+            await pageObj.waitFor(action.selector);
+            await pageObj.type(action.selector, action.inputText);
+            await pageObj.keyboard.press('Enter');
             message = `Typed in element ${action.selector} with ${action.inputText}`;
             break;
 
           case 'click':
-            await page.waitFor(action.selector);
-            await page.click(action.selector);
+            await pageObj.waitFor(action.selector);
+            await pageObj.click(action.selector),
             message = `Clicked element ${action.selector}`;
             break;
 
-          case 'verifyTitle':
-            let pageTitle = await page.title();
-            if (pageTitle !== action.textEqualsTo) {
-              throw new Error(`Page title "${pageTitle}" doesn't match ${action.textEqualsTo}`);
-            } else {
-              message = `Page title "${pageTitle}" matches ${action.textEqualsTo}`;
+          case 'assertPageTitle':
+            let pageTitle = await pageObj.title();
+            if (!action.matchRegex.match(pageTitle)) {
+              throw new Error(`Page title "${pageTitle}" doesn't match ${action.matchRegex}`);
             }
+            message = `Page title "${pageTitle}" matches ${action.matchRegex}`;
             break;
 
-          case 'verifyText':
-            message = await page.evaluate((action, context) => {
-              let el = document.querySelector(action.selector);
-              if (!el) throw new Error(`No element found: ${action.selector}`);
-
-              if (el.innerText !== action.textEqualsTo) {
-                throw new Error(`Text doesn't match for element ${action.selector}: ${action.textEqualsTo}`);
-              }
-              return `Matched text for element ${action.selector}`;
-            }, action, context);
-            assert.equal(await targetDom.getText(), action.textEqualsTo);
+          case 'assertInnerText':
+            content = await pageObj.$eval(action.selector, el => el.innerText);
+            if (!action.matchRegex.match(content)) {
+              throw new Error(`Expect element ${action.selector} to match ` +
+                `title as "${action.matchRegex}", but got "${content}".`);
+            }
+            message = `Matched text for element ${action.selector}`;
             break;
-
-          // case 'switchIframe':
-          //   await driver.switchTo().frame(action.iframeId);
-          //   break;
 
           case 'screenshot':
             await page.screenshot({
-              path: `${fullOutputPath}/output-step-${i+1}-action-${index}.png`
+              path: `${fullOutputPath}/${action.filename}`
             });
+            message = `Screenshot saved to ${action.filename}`;
+            break;
+
+          case 'outputContentToFile':
+            content = await pageObj.$eval(action.selector, el => el.outerHTML);
+            await outputHtmlToFile(
+                `${fullOutputPath}/${action.filename}`, content);
+            message = `write ${action.selector} to ${action.filename}`;
             break;
 
           case 'customFunc':
@@ -183,7 +142,9 @@ async function runTask(config, context) {
       await page.screenshot({path: `${fullOutputPath}/step-${i+1}.png`});
 
       if (step.outputHtmlToFile) {
-        await outputHtmlToFile(`${fullOutputPath}/html-step-${i+1}.html`, page);
+        await outputHtmlToFile(
+            `${fullOutputPath}/html-step-${i+1}.html`,
+            await page.content());
       }
     }
     isSuccess = true;
@@ -191,7 +152,9 @@ async function runTask(config, context) {
   } catch (err) {
     console.error(`${err}`.red);
     await page.screenshot({path: `${fullOutputPath}/step-${i+1}.png`});
-    await outputHtmlToFile(`${fullOutputPath}/html-step-${i+1}.html`, page);
+    await outputHtmlToFile(
+        `${fullOutputPath}/html-step-${i+1}.html`,
+        await page.content());
 
   } finally {
     await browser.close();
@@ -200,9 +163,9 @@ async function runTask(config, context) {
   }
 }
 
-async function outputHtmlToFile(filename, page) {
+async function outputHtmlToFile(filename, content) {
   // Output content
-  let html = beautify(await page.content(), {
+  let html = beautify(content, {
     indent_size: 2,
     preserve_newlines: false,
     content_unformatted: ['script', 'style'],
@@ -214,6 +177,8 @@ async function outputHtmlToFile(filename, page) {
 
 // Main
 async function generateLoads(config, argv) {
+  assert(config);
+
   let succces = 0;
   let runs = argv['runs'] || 1;
   let outputPath = argv['output'] || Date.now;
@@ -237,8 +202,8 @@ async function generateLoads(config, argv) {
     let filePath = path.resolve(`${context.fullOutputPath}/.dummy.txt`);
     await fse.outputFile(filePath, '');
 
-    console.log(`------ Run ${i} ------`.yellow);
-    let isSuccess = await runTask(sampleConfig, context);
+    console.log(`------ Run ${i} ------`.cyan);
+    let isSuccess = await runTask(config, context);
 
     if (isSuccess) {
       succces++;
