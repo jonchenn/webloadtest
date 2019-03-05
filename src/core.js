@@ -20,32 +20,32 @@ function getPageObject(page, action) {
   return page;
 }
 
-async function runTask(config, context) {
+async function runTask(task, context) {
   let isSuccess = false, error = null;
   let browser, page, content;
   let fullOutputPath = context.fullOutputPath;
-  let device = config.device || 'Pixel 2'
+  let device = task.device || 'Pixel 2'
   let waitOptions = {
     waitUntil: ['load', 'networkidle0'],
   };
 
   try {
-    assert(config.browser);
-    assert(config.steps);
+    assert(task.browser);
+    assert(task.steps);
 
     console.log(`Use device ${device}`.cyan);
 
     // Init puppeteer.
     browser = await puppeteer.launch({
       headless: context.isHeadless,
-      args: [`--window-size=${config.windowWidth},${config.windowHeight}`],
+      args: [`--window-size=${task.windowWidth},${task.windowHeight}`],
     });
     page = await browser.newPage();
     await page.emulate(devices[device]);
     page.on('console', msg => console.log(`\tPAGE console.log: ${msg.text()}`.gray));
 
-    for (var i = 0; i < config.steps.length; i++) {
-      let step = config.steps[i];
+    for (var i = 0; i < task.steps.length; i++) {
+      let step = task.steps[i];
       let isFailed = false;
 
       if (!step.actions || step.skip) continue;
@@ -129,15 +129,15 @@ async function runTask(config, context) {
         }
         if (isFailed) throw new Error(`RunTask failed: ${message}`);
         if (action.sleepAfter) await page.waitFor(action.sleepAfter);
-        if (config.sleepAfterEachAction) {
-          await page.waitFor(config.sleepAfterEachAction);
+        if (task.sleepAfterEachAction) {
+          await page.waitFor(task.sleepAfterEachAction);
         }
 
         console.log(`\t${action.log || action.actionType}: ${message}`.reset);
       }
 
-      if (config.sleepAfterEachStep) {
-        await page.waitFor(config.sleepAfterEachStep);
+      if (task.sleepAfterEachStep) {
+        await page.waitFor(task.sleepAfterEachStep);
       }
       await page.screenshot({path: `${fullOutputPath}/step-${i+1}.png`});
 
@@ -176,8 +176,8 @@ async function outputHtmlToFile(filename, content) {
 }
 
 // Main
-async function generateLoads(config, argv) {
-  assert(config);
+async function generateLoads(task, argv) {
+  assert(task);
 
   let succces = 0;
   let runs = argv['runs'] || 1;
@@ -203,7 +203,7 @@ async function generateLoads(config, argv) {
     await fse.outputFile(filePath, '');
 
     console.log(`------ Run ${i} ------`.cyan);
-    let error = await runTask(config, context);
+    let error = await runTask(task, context);
 
     if (!error) {
       succces++;

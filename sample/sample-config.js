@@ -1,4 +1,4 @@
-let sampleConfig = {
+module.exports = {
   browser: 'chrome',
   device: 'Pixel 2',
   windowWidth: 600,
@@ -34,11 +34,11 @@ let sampleConfig = {
       // For AMP results: 'div[data-hveid] a.amp_r'
       selector: 'div[data-hveid] a.amp_r',
     }, {
-      log: 'Verify AMP viewer title',
       actionType: 'assertInnerText',
       selector: '.amp-ttlctr',
       matchRegex: '(ampproject.org|ampbyexample.com)',
       sleepAfter: 1000,
+      log: 'Verify AMP viewer title',
     // }, {
     //   log: 'Output iframe content',
     //   iframe: 1,
@@ -73,5 +73,3 @@ let sampleConfig = {
     }],
   }],
 };
-
-module.exports = sampleConfig;
